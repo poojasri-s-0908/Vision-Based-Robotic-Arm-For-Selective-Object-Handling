@@ -1,0 +1,110 @@
+#include <Wire.h>
+#include <Adafruit_PWMServoDriver.h>
+
+Adafruit_PWMServoDriver pca = Adafruit_PWMServoDriver();
+
+#define SERVOMIN 120
+#define SERVOMAX 500
+
+// CHANNELS
+#define LOWER 3
+#define UPPER 4
+#define GRIPPER 2
+
+// CALIBRATED VALUES
+int lower_home = 58;
+int lower_ground = 105;
+
+int upper_home = 80;
+int upper_ground = 100;
+
+int grip_open = 0;
+int grip_close = 120;
+
+// CURRENT POSITIONS
+int lower_pos = 58;
+int upper_pos = 80;
+int grip_pos = 40;
+
+// NORMAL
+int angleToPulse(int angle) {
+  return map(angle, 0, 180, SERVOMIN, SERVOMAX);
+}
+
+// REVERSED LOWER
+int angleToPulseLower(int angle) {
+  return map(angle, 180, 0, SERVOMIN, SERVOMAX);
+}
+
+// SMOOTH MOVE
+void moveSmooth(int ch, int &current, int target, bool reverse = false) {
+  if (current < target) {
+    for (int i = current; i <= target; i++) {
+      if (reverse)
+        pca.setPWM(ch, 0, angleToPulseLower(i));
+      else
+        pca.setPWM(ch, 0, angleToPulse(i));
+      delay(15);
+    }
+  } else {
+    for (int i = current; i >= target; i--) {
+      if (reverse)
+        pca.setPWM(ch, 0, angleToPulseLower(i));
+      else
+        pca.setPWM(ch, 0, angleToPulse(i));
+      delay(15);
+    }
+  }
+  current = target;
+}
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin(D2, D1);
+
+  pca.begin();
+  pca.setPWMFreq(50);
+
+  Serial.println("READY");
+}
+
+void loop() {
+
+  if (Serial.available()) {
+
+    String cmd = Serial.readStringUntil('\n');
+    cmd.trim();
+
+    Serial.println("Received: " + cmd);
+
+    // 🔥 HOME → UP
+    if (cmd.indexOf("HOME") >= 0) {
+      Serial.println("HOME (UP)");
+
+      moveSmooth(LOWER, lower_pos, lower_ground, true);
+      moveSmooth(UPPER, upper_pos, upper_ground);
+    }
+
+    // 🔥 GROUND → DOWN
+    else if (cmd.indexOf("GROUND") >= 0) {
+      Serial.println("GROUND (DOWN)");
+
+      moveSmooth(LOWER, lower_pos, lower_home, true);
+      moveSmooth(UPPER, upper_pos, upper_home);
+    }
+
+    // 🔥 GRIPPER (ONE-TIME ACTION)
+    else if (cmd.indexOf("GRIPPER") >= 0) {
+      Serial.println("GRIPPER ACTION");
+
+      // start at 0°
+      pca.setPWM(GRIPPER, 0, angleToPulse(0));
+      delay(1000);
+
+      // move to 120°
+      pca.setPWM(GRIPPER, 0, angleToPulse(120));
+
+      grip_pos = 120;
+    }
+  }
+}
